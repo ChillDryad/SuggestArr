@@ -11,9 +11,11 @@ import "@/assets/styles/global.css";
 async function initApp() {
   axios.defaults.withCredentials = true;
 
-  // Configure base URL for development
+  // Configure base URL for development — use the current origin so the
+  // Vite dev proxy works regardless of which host (localhost or Tailnet IP)
+  // the browser is connecting from.
   if (import.meta.env.DEV) {
-    axios.defaults.baseURL = "http://localhost:5000";
+    axios.defaults.baseURL = window.location.origin;
   }
 
   // Await the router creation (checks auth, subpath, etc.)

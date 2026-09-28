@@ -51,7 +51,6 @@
   padding: var(--spacing-xl);
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--color-border-light);
 }
 
 .static-bg-active .settings-content {
@@ -203,10 +202,6 @@
 /* Content */
 .tab-content {
   flex: 1;
-  border-radius: var(--radius-lg);
-  padding: var(--spacing-xl);
-  backdrop-filter: blur(10px);
-  border: 1px solid var(--color-border-light);
   min-height: 400px;
 }
 
@@ -869,7 +864,7 @@
   }
 
   .tab-content {
-    padding: var(--spacing-md);
+    padding: 0;
   }
 
   .settings-footer {

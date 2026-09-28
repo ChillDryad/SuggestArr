@@ -17,7 +17,7 @@ function readSubpathFromMeta() {
 
 function configureAxiosSubpath(subpath) {
   if (import.meta.env.DEV) {
-    axios.defaults.baseURL = "http://localhost:5000" + subpath;
+    axios.defaults.baseURL = window.location.origin + subpath;
   } else {
     axios.defaults.baseURL = subpath || "/";
   }

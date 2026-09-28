@@ -12,4 +12,13 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(process.env.npm_package_version || "unknown"),
   },
+  server: {
+    port: 5174,
+    proxy: {
+      "/api": {
+        target: "http://127.0.0.1:5050",
+        changeOrigin: true,
+      },
+    },
+  },
 });
