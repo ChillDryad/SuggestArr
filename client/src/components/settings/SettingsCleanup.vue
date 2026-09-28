@@ -114,7 +114,8 @@
         </div>
       </div>
       <div v-if="!logCollapsed && !log.length" class="placeholder">No cleanup actions logged yet.</div>
-      <table v-else-if="!logCollapsed" class="log-table">
+      <div v-else-if="!logCollapsed" class="table-wrap">
+        <table class="log-table">
         <thead>
           <tr>
             <th>When</th>
@@ -137,7 +138,8 @@
             <td>{{ row.reason }}</td>
           </tr>
         </tbody>
-      </table>
+        </table>
+      </div>
       <div v-if="!logCollapsed && totalLogPages > 1" class="pagination-row">
         <button class="btn btn-sm" :disabled="logPage <= 1" @click="logPage -= 1">
           <i class="fas fa-chevron-left"></i>

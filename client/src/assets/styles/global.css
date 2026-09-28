@@ -21,6 +21,7 @@ html {
   font-size: var(--font-size-base);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  max-width: 100%;
 }
 
 body {
@@ -29,7 +30,31 @@ body {
   line-height: var(--line-height-normal);
   color: var(--color-text-primary);
   background-color: var(--color-bg-primary);
-  overflow-x: hidden;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+#app {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+/* Keep accidental long provider errors, IDs, URLs, and titles from widening the page. */
+:where(p, li, dd, .form-help, .error-banner, .login-error, .login-success, .v-toast__text) {
+  overflow-wrap: anywhere;
+}
+
+/* Wide datasets must scroll inside their own surface instead of moving the whole page. */
+:where(.table-wrap, .table-scroll-container, .api-keys-table-wrap) {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+:where(.table-wrap, .table-scroll-container, .api-keys-table-wrap) > table {
+  min-width: max-content;
 }
 
 /* ========== Typography ========== */
