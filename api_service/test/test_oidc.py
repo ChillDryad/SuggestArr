@@ -1,6 +1,7 @@
 """Unit tests for native OpenID Connect identity policy."""
 import os
 import unittest
+from unittest.mock import MagicMock, patch
 
 
 class TestOIDCIdentityPolicy(unittest.TestCase):
@@ -46,6 +47,27 @@ class TestOIDCIdentityPolicy(unittest.TestCase):
                 "preferred_username": "outsider",
                 "groups": ["guests"],
             })
+
+
+class TestOIDCSetupProtection(unittest.TestCase):
+    def test_oidc_enabled_never_opens_setup_mode(self):
+        """A first OIDC user must be able to become the initial admin safely."""
+        from api_service.auth import middleware
+
+        prior = os.environ.get("OIDC_ENABLED")
+        os.environ["OIDC_ENABLED"] = "true"
+        middleware.invalidate_setup_cache()
+        try:
+            db = MagicMock()
+            db.get_auth_user_count.return_value = 0
+            with patch.object(middleware, "_get_database_manager", return_value=lambda: db):
+                self.assertFalse(middleware._is_setup_mode())
+        finally:
+            if prior is None:
+                os.environ.pop("OIDC_ENABLED", None)
+            else:
+                os.environ["OIDC_ENABLED"] = prior
+            middleware.invalidate_setup_cache()
 
 
 if __name__ == "__main__":

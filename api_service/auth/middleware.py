@@ -374,6 +374,12 @@ def _is_setup_mode() -> bool:
     """
     global DatabaseManager
 
+    # OIDC is a complete first-login authority. Never fail open to the
+    # local setup wizard in this mode: the first verified OIDC identity is
+    # provisioned by the callback instead.
+    if os.environ.get("OIDC_ENABLED", "").strip().lower() == "true":
+        return False
+
     now = time.monotonic()
     with _setup_mode_lock:
         cached = _setup_mode_cache
