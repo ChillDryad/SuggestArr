@@ -26,11 +26,18 @@ Security decisions
   to support anomaly detection without leaking credentials to log consumers.
 """
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, request, jsonify, make_response, g
+from flask import Blueprint, request, jsonify, make_response, g, redirect
 
 from api_service.auth.auth_service import AuthService, MIN_PASSWORD_LENGTH, REFRESH_TOKEN_EXPIRE_DAYS
+from api_service.auth.oidc_service import (
+    OIDCAccessDenied,
+    OIDCAuthenticationError,
+    OIDCConfigurationError,
+    OIDCService,
+)
 from api_service.auth.limiter import limiter
 from api_service.auth.middleware import (
     _is_trusted_local_ip,
@@ -52,6 +59,55 @@ auth_bp = Blueprint('auth', __name__)
 
 # Name of the httpOnly cookie that carries the opaque refresh token.
 _REFRESH_COOKIE = "suggestarr_refresh"
+_OIDC_TRANSACTION_COOKIE = "suggestarr_oidc_transaction"
+
+
+def _refresh_cookie_path() -> str:
+    subpath = str(load_env_vars().get('SUBPATH') or '').strip()
+    return f"{subpath}/api/auth/refresh" if subpath else "/api/auth/refresh"
+
+
+def _set_refresh_cookie(response, raw_refresh: str) -> None:
+    response.set_cookie(
+        _REFRESH_COOKIE,
+        raw_refresh,
+        httponly=True,
+        secure=request.is_secure,
+        samesite="Strict",
+        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86400,
+        path=_refresh_cookie_path(),
+    )
+
+
+def _oidc_callback_path() -> str:
+    subpath = str(load_env_vars().get('SUBPATH') or '').strip()
+    return f"{subpath}/api/auth/oidc/callback" if subpath else "/api/auth/oidc/callback"
+
+
+def _provision_oidc_user(identity):
+    """Resolve a verified OIDC subject to one local account without username linking."""
+    db = DatabaseManager()
+    user = db.get_auth_user_by_oidc_subject(identity.subject)
+    if user is None:
+        username = identity.username
+        # Do not claim a pre-existing local account merely because a provider
+        # username collides. The fallback preserves both accounts safely.
+        if db.get_auth_user_by_username(username) is not None:
+            username = f"oidc-{secrets.token_hex(6)}"
+        user_id = db.create_auth_user(
+            username,
+            AuthService.hash_password(secrets.token_urlsafe(32)),
+            role=identity.role,
+        )
+        db.bind_oidc_subject(user_id, identity.subject)
+        user = db.get_auth_user_by_id(user_id)
+    if not user or not user.get("is_active", True):
+        raise OIDCAccessDenied("This SuggestArr account is disabled")
+    if user.get("role") != identity.role:
+        db.update_auth_user_role(user["id"], identity.role)
+        user = db.get_auth_user_by_id(user["id"])
+    db.update_last_login(user["id"])
+    return user
 
 # Dummy bcrypt hash used for constant-time comparison when a username is not
 # found.  The hash is pre-computed so it cannot be timed differently from a
@@ -112,6 +168,68 @@ def revoke_api_key(key_id):
         return jsonify({'error': 'Not found'}), 404
     logger.info('api_key.revoked user_id=%s key_id=%s', g.current_user['id'], key_id)
     return '', 204
+
+
+# ---------------------------------------------------------------------------
+# Public: native OpenID Connect authorization-code + PKCE
+# ---------------------------------------------------------------------------
+
+@auth_bp.route('/oidc/login', methods=['GET'])
+@limiter.limit("10 per minute")
+def oidc_login():
+    if not OIDCService.is_enabled():
+        return jsonify({"error": "OpenID Connect is not enabled"}), 404
+    try:
+        settings = OIDCService.settings()
+        discovery = OIDCService.discover(settings)
+        material = OIDCService.create_login_material()
+        response = make_response(redirect(OIDCService.authorization_url(discovery, settings, material)))
+        response.set_cookie(
+            _OIDC_TRANSACTION_COOKIE,
+            OIDCService.serialize_transaction(material),
+            httponly=True,
+            secure=request.is_secure,
+            samesite="Lax",
+            max_age=600,
+            path=_oidc_callback_path(),
+        )
+        return response
+    except (OIDCConfigurationError, OIDCAuthenticationError) as exc:
+        logger.warning("OIDC login could not start: %s", exc)
+        return jsonify({"error": "OpenID Connect is unavailable"}), 503
+
+
+@auth_bp.route('/oidc/callback', methods=['GET'])
+@limiter.limit("20 per minute")
+def oidc_callback():
+    if not OIDCService.is_enabled():
+        return jsonify({"error": "OpenID Connect is not enabled"}), 404
+    try:
+        settings = OIDCService.settings()
+        transaction = OIDCService.read_transaction(request.cookies.get(_OIDC_TRANSACTION_COOKIE, ""))
+        state = request.args.get("state", "")
+        code = request.args.get("code", "")
+        if not code or not state or not secrets.compare_digest(state, transaction["state"]):
+            raise OIDCAuthenticationError("Login state did not match")
+        discovery = OIDCService.discover(settings)
+        tokens = OIDCService.exchange_code(discovery, settings, code, transaction["code_verifier"])
+        claims = OIDCService.verify_id_token(discovery, settings, tokens["id_token"], transaction["nonce"])
+        user = _provision_oidc_user(OIDCService.identity_from_claims(claims))
+        raw_refresh, hashed_refresh = AuthService.generate_refresh_token()
+        DatabaseManager().store_refresh_token(
+            user["id"], hashed_refresh,
+            datetime.now(tz=timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        )
+        response = make_response(redirect(f"{settings.public_url}/dashboard"))
+        _set_refresh_cookie(response, raw_refresh)
+    except OIDCAccessDenied as exc:
+        logger.warning("OIDC authorization denied: %s", exc)
+        response = make_response(redirect(f"{os.environ.get('OIDC_PUBLIC_URL', '').rstrip('/')}/login?oidc_error=denied"))
+    except (OIDCConfigurationError, OIDCAuthenticationError) as exc:
+        logger.warning("OIDC callback failed: %s", exc)
+        response = make_response(redirect(f"{os.environ.get('OIDC_PUBLIC_URL', '').rstrip('/')}/login?oidc_error=failed"))
+    response.delete_cookie(_OIDC_TRANSACTION_COOKIE, path=_oidc_callback_path())
+    return response
 
 
 # ---------------------------------------------------------------------------
@@ -177,6 +295,7 @@ def auth_status():
             "auth_setup_complete": auth_done,
             "app_setup_complete": app_done,
             "allow_registration": allow_registration,
+            "oidc_enabled": OIDCService.is_enabled(),
             "authenticated": authenticated,
         }
 
@@ -317,19 +436,8 @@ def login():
 
     # httpOnly — JavaScript cannot read this cookie (XSS protection).
     # SameSite=Strict — cookie is not sent on cross-site requests (CSRF protection).
-    # path=/api/auth/refresh — cookie is only sent to the refresh endpoint,
-    #   not to every API call, which limits its exposure window.
-    subpath = str(load_env_vars().get('SUBPATH') or '').strip()
-    refresh_path = f"{subpath}/api/auth/refresh" if subpath else "/api/auth/refresh"
-    
-    response.set_cookie(
-        _REFRESH_COOKIE,
-        raw_refresh,
-        httponly=True,
-        samesite="Strict",
-        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 86400,
-        path=refresh_path,
-    )
+    # Its path is restricted to the refresh endpoint to limit exposure.
+    _set_refresh_cookie(response, raw_refresh)
 
     return response
 

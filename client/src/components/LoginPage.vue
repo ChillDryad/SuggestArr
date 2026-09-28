@@ -6,6 +6,16 @@
       <h1>{{ cardTitle }}</h1>
       <p class="login-subtitle">{{ cardSubtitle }}</p>
 
+      <!-- Native Pocket ID sign-in -->
+      <div v-if="oidcEnabled" class="oidc-login">
+        <button type="button" class="btn btn-primary login-btn" @click="startOidcLogin">
+          <i class="fas fa-shield-alt"></i>
+          Sign in with Pocket ID
+        </button>
+        <p v-if="error" class="login-error"><i class="fas fa-exclamation-circle"></i> {{ error }}</p>
+        <div class="login-divider"><span>or use a local account</span></div>
+      </div>
+
       <!-- Login / Setup / Register form -->
       <form @submit.prevent="handleSubmit" class="login-form">
         <div class="form-group">
@@ -101,6 +111,7 @@ export default {
     const isSetupMode = ref(false)
     const isRegisterMode = ref(false)
     const allowRegistration = ref(false)
+    const oidcEnabled = ref(false)
 
     const cardTitle = computed(() => {
       if (isSetupMode.value) return 'Create Admin Account'
@@ -136,6 +147,7 @@ export default {
         const response = await axios.get('/api/auth/status')
         isSetupMode.value = !response.data.auth_setup_complete
         allowRegistration.value = !!response.data.allow_registration
+        oidcEnabled.value = !!response.data.oidc_enabled
       } catch {
         isSetupMode.value = false
         allowRegistration.value = false
@@ -188,12 +200,16 @@ export default {
       }
     }
 
+    function startOidcLogin() {
+      window.location.assign('/api/auth/oidc/login')
+    }
+
     return {
       username, password, confirmPassword,
       loading, error, successMsg,
-      isSetupMode, isRegisterMode, allowRegistration,
+      isSetupMode, isRegisterMode, allowRegistration, oidcEnabled,
       cardTitle, cardSubtitle, submitIcon, submitLabel,
-      handleSubmit, switchToRegister, switchToLogin,
+      handleSubmit, switchToRegister, switchToLogin, startOidcLogin,
     }
   }
 }

@@ -529,6 +529,33 @@ Important options:
 
 Do not expose SuggestArr publicly with authentication disabled or local bypass enabled unless a separate trusted authentication layer protects it.
 
+### Native Pocket ID OIDC
+
+SuggestArr can authenticate directly with any standards-compliant OpenID Connect provider, including Pocket ID. This is native authorization-code + PKCE: Caddy only handles TLS/routing, while SuggestArr validates the provider's discovery document, JWKS signature, issuer, audience, nonce, and state itself.
+
+Create a confidential Pocket ID client with this callback URL:
+
+```text
+https://suggestarr.dryad.nexus/api/auth/oidc/callback
+```
+
+Set these **deployment-only** variables; never save the client secret through the web UI or commit it:
+
+```yaml
+environment:
+  - OIDC_ENABLED=true
+  - OIDC_ISSUER=https://auth.dryad.nexus
+  - OIDC_CLIENT_ID=[REDACTED]
+  - OIDC_CLIENT_SECRET=[REDACTED]
+  - OIDC_PUBLIC_URL=https://suggestarr.dryad.nexus
+  - OIDC_ALLOWED_GROUPS=household
+  - OIDC_ADMIN_GROUPS=admin
+```
+
+`OIDC_ALLOWED_GROUPS` gates access; members of `OIDC_ADMIN_GROUPS` become SuggestArr administrators. Admin groups are also permitted even when they are not repeated in `OIDC_ALLOWED_GROUPS`. OIDC subjects are bound to local accounts by immutable `sub`, not by username. Existing local accounts remain untouched; a username collision creates a separate OIDC account rather than silently taking over a local account.
+
+After the callback, SuggestArr sets its normal opaque httpOnly refresh cookie and the SPA obtains its short-lived API JWT through the existing refresh endpoint. No provider token, client secret, or bearer token is placed in browser storage or redirect URLs.
+
 ### Trusted header (reverse proxy / SSO)
 
 If you already run single sign-on in front of SuggestArr — Authelia, Authentik,

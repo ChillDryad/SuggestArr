@@ -179,6 +179,32 @@ class AuthMixin:
                 # Different error, re-raise
                 raise
 
+    def get_auth_user_by_oidc_subject(self, subject: str) -> Optional[Dict[str, Any]]:
+        """Return the local account bound to a verified OpenID Connect subject."""
+        ph = self._ph()
+        query = f"SELECT id FROM auth_users WHERE oidc_subject = {ph}"
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, (subject,))
+            row = cursor.fetchone()
+        return self.get_auth_user_by_id(int(row[0])) if row else None
+
+    def bind_oidc_subject(self, user_id: int, subject: str) -> None:
+        """Bind one immutable OIDC subject to an existing local account."""
+        ph = self._ph()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"UPDATE auth_users SET oidc_subject = {ph} WHERE id = {ph}", (subject, user_id))
+            conn.commit()
+
+    def update_auth_user_role(self, user_id: int, role: str) -> None:
+        """Synchronize an existing account's role from verified identity claims."""
+        ph = self._ph()
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"UPDATE auth_users SET role = {ph} WHERE id = {ph}", (role, user_id))
+            conn.commit()
+
     def update_last_login(self, user_id: int) -> None:
         """
         Record the current UTC timestamp as the last successful login time.

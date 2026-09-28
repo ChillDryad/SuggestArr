@@ -27,6 +27,7 @@ class SchemaManager:
                     visible_tabs TEXT DEFAULT 'requests,jobs,profile'
                     , seer_user_id INTEGER
                     , language TEXT
+                    , oidc_subject TEXT UNIQUE
                 )
             """,
             'refresh_tokens': """
@@ -778,6 +779,16 @@ class SchemaManager:
                         cursor.execute("ALTER TABLE auth_users ADD COLUMN language VARCHAR(16)")
                     else:
                         cursor.execute("ALTER TABLE auth_users ADD COLUMN language TEXT")
+                    conn.commit()
+                # Native OIDC subject is the stable external identity key.
+                if 'oidc_subject' not in existing_columns:
+                    if self.db_type in ['mysql', 'mariadb']:
+                        cursor.execute("ALTER TABLE auth_users ADD COLUMN oidc_subject VARCHAR(255) UNIQUE")
+                    elif self.db_type == 'postgres':
+                        cursor.execute("ALTER TABLE auth_users ADD COLUMN oidc_subject TEXT UNIQUE")
+                    else:
+                        cursor.execute("ALTER TABLE auth_users ADD COLUMN oidc_subject TEXT")
+                        cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_auth_users_oidc_subject ON auth_users(oidc_subject)")
                     conn.commit()
 
             except Exception as e:
