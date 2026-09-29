@@ -1,6 +1,7 @@
 from collections import deque
 import os
 from flask import Blueprint, jsonify, request
+from api_service.auth.middleware import require_role
 from api_service.config.logger_manager import LoggerManager
 
 logger = LoggerManager().get_logger("LogsRoute")
@@ -11,6 +12,7 @@ MAX_LOG_OFFSET = 100000
 
 
 @logs_bp.route('/logs', methods=['GET'])
+@require_role('admin')
 def get_logs():
     """
     Endpoint to retrieve logs.
@@ -59,5 +61,5 @@ def read_logs(log_file='app.log', limit=DEFAULT_LOG_LIMIT, offset=0):
         start_index = max(0, end_index - limit)
         return logs[start_index:end_index]
     except Exception as e:
-        logger.error(f'Error reading logs: {str(e)}')
+        logger.error('Error reading logs:')
         return []

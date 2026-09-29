@@ -390,12 +390,12 @@ def _is_setup_mode() -> bool:
         count = _get_database_manager()().get_auth_user_count()
         result = count == 0
     except Exception:
-        # If the DB is not yet reachable (e.g., first startup), fail open so
-        # the wizard can complete.  This is a conscious trade-off: a transient
-        # DB error temporarily allows unauthenticated access, which is
-        # preferable to locking out the operator entirely.
-        logger.warning("Could not query auth_users count; defaulting to setup mode")
-        result = True
+        # Fail CLOSED on DB errors — a transient DB outage must not open all
+        # API routes to unauthenticated access.  If the DB is genuinely empty
+        # (first startup), the table creation in initialize_db() will have
+        # succeeded and the count query will return 0 without error.
+        logger.warning("Could not query auth_users count; failing closed (not setup mode)")
+        result = False
 
     with _setup_mode_lock:
         _setup_mode_cache["value"] = result
@@ -502,7 +502,7 @@ def enforce_authentication() -> Optional[tuple]:
 
     auth_mode = _resolve_auth_mode()
 
-    client_ip = request.remote_addr or ""
+    client_ip = _peer_address()
     trusted_cidr_networks = _load_trusted_cidrs()
     trusted_cidrs = [str(network) for network in trusted_cidr_networks]
     is_trusted_ip = _is_trusted_local_ip(client_ip)
@@ -524,6 +524,20 @@ def enforce_authentication() -> Optional[tuple]:
         payload = AuthService.verify_access_token(bearer)
         if payload is None:
             return jsonify({"error": "Invalid or expired token"}), 401
+        # Re-fetch user permissions from the DB instead of trusting JWT claims.
+        # JWT-embedded role/can_manage_ai/visible_tabs can be stale for up to
+        # the access-token TTL (15 min) after an admin changes them.
+        try:
+            db_user = _get_database_manager()().get_auth_user_by_id(int(payload.get("id", 0)))
+            if db_user and db_user.get("is_active", True):
+                payload["role"] = db_user["role"]
+                payload["can_manage_ai"] = db_user.get("can_manage_ai", 0)
+                payload["visible_tabs"] = db_user.get("visible_tabs", "requests,jobs,profile")
+            elif db_user and not db_user.get("is_active", True):
+                return jsonify({"error": "Account disabled"}), 401
+        except Exception:
+            # If the DB lookup fails, fall back to JWT claims (existing behavior)
+            logger.warning("Failed to re-fetch user permissions from DB; using JWT claims")
         _apply_auth_context(payload, "jwt")
         return None
     if api_key:

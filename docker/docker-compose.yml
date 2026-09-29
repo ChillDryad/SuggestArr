@@ -10,4 +10,46 @@ services:
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - SUGGESTARR_PORT=${SUGGESTARR_PORT:-5000}
-      - TZ=Europe/Rome
+      - TZ=${TZ:-Europe/Rome}
+      - DB_TYPE=${DB_TYPE:-postgres}
+      - DB_HOST=${DB_HOST:-suggestarr-db}
+      - DB_PORT=${DB_PORT:-5432}
+      - DB_USER=${DB_USER:-suggestarr}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_NAME=${DB_NAME:-suggestarr}
+    depends_on:
+      suggestarr-db:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  suggestarr-db:
+    image: postgres:16-alpine
+    container_name: suggestarr-db
+    restart: always
+    environment:
+      - POSTGRES_USER=${DB_USER:-suggestarr}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME:-suggestarr}
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-suggestarr}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETUID
+      - SETGID

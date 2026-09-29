@@ -1,9 +1,9 @@
 # Stage 1: Build the client
 FROM node:22 AS client-builder
 WORKDIR /app/client
-COPY client/package*.json ./ 
+COPY client/package*.json ./
 RUN npm ci && npm cache clean --force
-COPY client/ . 
+COPY client/ ./
 RUN npm run build
 
 # Stage 2: Create the final image
@@ -27,17 +27,22 @@ COPY api_service/ /app/api_service/
 COPY docker/docker_entrypoint.sh /app/
 RUN chmod +x /app/docker_entrypoint.sh
 
-# Create log files for Gunicorn
+# Create log files
 RUN touch /var/log/gunicorn.log /var/log/gunicorn_error.log
 
-# Expose the port used by Gunicorn
+# Create a non-root user and grant ownership of app + log files
+RUN addgroup -S suggestarr && adduser -S -G suggestarr -u 1001 suggestarr \
+    && chown -R suggestarr:suggestarr /app /var/log/gunicorn.log /var/log/gunicorn_error.log
+
+# Expose the port used by uvicorn
 ARG SUGGESTARR_PORT=5000
 EXPOSE ${SUGGESTARR_PORT}
 
-# Start Supervisor to manage Gunicorn
 ENV LOG_LEVEL=info
-# Set the port dynamically
 ENV SUGGESTARR_PORT=${SUGGESTARR_PORT}
+
+# Switch to non-root user
+USER suggestarr
 
 # Use the custom port in the entrypoint command
 ENTRYPOINT ["/app/docker_entrypoint.sh"]

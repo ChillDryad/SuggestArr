@@ -42,6 +42,7 @@ from api_service.auth.limiter import limiter
 from api_service.auth.middleware import (
     _is_trusted_local_ip,
     _load_bypass_user_context,
+    _peer_address,
     invalidate_setup_cache,
     require_interactive_auth,
 )
@@ -277,11 +278,7 @@ def auth_status():
         # /api/auth/status is public, so middleware returns before injecting
         # bypass context. Recreate equivalent bypass checks here.
         if not current_user:
-            client_ip = (
-                request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-                or request.remote_addr
-                or ""
-            )
+            client_ip = _peer_address()
             if auth_mode == "disabled":
                 current_user = _load_bypass_user_context()
                 bypass = True
@@ -307,13 +304,13 @@ def auth_status():
         return jsonify(response), 200
     except Exception as exc:
         logger.error("Error reading auth status: %s", exc)
-        # Fail open so the frontend can still reach the wizard.
         return jsonify({
             "auth_setup_complete": False,
             "app_setup_complete": False,
             "allow_registration": False,
             "authenticated": False,
-        }), 200
+            "error": "Service temporarily unavailable",
+        }), 503
 
 
 # ---------------------------------------------------------------------------
@@ -455,6 +452,11 @@ def refresh():
     The refresh cookie is sent automatically by the browser because the
     request path matches the cookie's path attribute.
 
+    Token rotation: on each successful refresh, the old refresh token is
+    revoked and a new one is issued.  If a revoked token is presented again
+    (reuse detection), all tokens for that user are burned to force
+    re-authentication.
+
     Response (200): { "access_token": "<jwt>" }
     Response (401): { "error": "<reason>" }
     """
@@ -467,7 +469,15 @@ def refresh():
     record = db.get_refresh_token(token_hash)
 
     if not record:
-        # Token not found or already revoked.
+        # Token not found among non-revoked tokens. Check if it was revoked
+        # — if so, this is a reused/stolen token: burn the whole family.
+        revoked_record = db.get_refresh_token_any(token_hash)
+        if revoked_record and revoked_record.get("revoked"):
+            logger.warning(
+                "Refresh token reuse detected for user_id=%s — revoking all tokens",
+                revoked_record["user_id"],
+            )
+            db.revoke_all_user_refresh_tokens(revoked_record["user_id"])
         return jsonify({"error": "Invalid refresh token"}), 401
 
     # Check expiry in Python (DB stores as ISO string, not a DB-native check).
@@ -489,8 +499,16 @@ def refresh():
     if not user or not user.get("is_active", True):
         return jsonify({"error": "User not found or disabled"}), 401
 
+    # Rotate: revoke the old refresh token and issue a new one.
+    db.revoke_refresh_token(token_hash)
+    new_raw_refresh, new_token_hash = AuthService.generate_refresh_token()
+    new_expires = datetime.now(tz=timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    db.store_refresh_token(user["id"], new_token_hash, new_expires)
+
     access_token = AuthService.create_access_token(user["id"], user["username"], user["role"])
-    return jsonify({"access_token": access_token}), 200
+    response = jsonify({"access_token": access_token})
+    _set_refresh_cookie(response, new_raw_refresh)
+    return response, 200
 
 
 # ---------------------------------------------------------------------------

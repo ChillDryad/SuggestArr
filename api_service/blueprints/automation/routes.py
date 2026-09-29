@@ -265,7 +265,7 @@ def _run_automation_in_background():
         loop.run_until_complete(content_automation.run())
         logger.info("Force run completed successfully.")
     except Exception as e:
-        logger.error(f'Background force run error: {str(e)}', exc_info=True)
+        logger.error('Background force run error:', exc_info=True)
     finally:
         close_event_loop(loop, logger)
         with _force_run_lock:

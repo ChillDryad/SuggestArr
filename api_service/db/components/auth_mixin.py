@@ -259,7 +259,7 @@ class AuthMixin:
         Retrieve a non-revoked refresh token record by its hash.
 
         Args:
-            token_hash: SHA-256 hex digest of the raw token received from the cookie.
+            token_hash: SHA-256 hex digest of the token received from the cookie.
 
         Returns:
             dict | None: Row with keys id, user_id, expires_at - or None if
@@ -278,12 +278,40 @@ class AuthMixin:
             return None
         return {"id": row[0], "user_id": row[1], "expires_at": row[2]}
 
+    def get_refresh_token_any(self, token_hash: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a refresh token record by its hash, including revoked tokens.
+
+        Used for token-reuse detection: if get_refresh_token() returns None
+        but get_refresh_token_any() returns a row with revoked=1, the token
+        has been used after revocation — indicating theft.
+
+        Args:
+            token_hash: SHA-256 hex digest of the token to look up.
+
+        Returns:
+            dict | None: Row with keys id, user_id, expires_at, revoked - or None.
+        """
+        ph = self._ph()
+        query = (
+            f"SELECT id, user_id, expires_at, revoked FROM refresh_tokens "
+            f"WHERE token_hash = {ph}"
+        )
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, (token_hash,))
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        return {"id": row[0], "user_id": row[1], "expires_at": row[2], "revoked": bool(row[3])}
+
     def revoke_refresh_token(self, token_hash: str) -> None:
         """
         Mark a refresh token as revoked so it can no longer be used.
 
-        Called on logout.  The row is kept (not deleted) so that token-reuse
-        attacks (presenting a revoked token) can be detected in the future.
+        Called on logout and during token rotation.  The row is kept (not
+        deleted) so that token-reuse attacks (presenting a revoked token)
+        can be detected in the future.
 
         Args:
             token_hash: SHA-256 hex digest of the token to invalidate.
@@ -293,6 +321,24 @@ class AuthMixin:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(query, (token_hash,))
+            conn.commit()
+
+    def revoke_all_user_refresh_tokens(self, user_id: int) -> None:
+        """
+        Revoke every refresh token belonging to a user.
+
+        Called when a revoked (already-used) token is presented again — this
+        indicates token theft, so we burn the entire family to force
+        re-authentication.
+
+        Args:
+            user_id: Primary key of the auth user whose tokens should be revoked.
+        """
+        ph = self._ph()
+        query = f"UPDATE refresh_tokens SET revoked = 1 WHERE user_id = {ph} AND revoked = 0"
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, (user_id,))
             conn.commit()
 
     def cleanup_expired_refresh_tokens(self) -> int:

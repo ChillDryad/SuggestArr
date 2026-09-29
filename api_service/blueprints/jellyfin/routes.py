@@ -3,6 +3,7 @@ from api_service.services.jellyfin.jellyfin_client import JellyfinClient
 from api_service.config.logger_manager import LoggerManager
 from api_service.db.database_manager import DatabaseManager
 from api_service.utils.ssrf_guard import validate_url
+from api_service.auth.middleware import require_role
 
 logger = LoggerManager.get_logger("JellyfinRoute")
 jellyfin_bp = Blueprint('jellyfin', __name__)
@@ -21,6 +22,7 @@ def _load_jellyfin_config():
     return config.get('api_url', ''), config.get('api_key', '')
 
 
+@require_role('admin')
 @jellyfin_bp.route('/libraries', methods=['GET', 'POST'])
 async def get_jellyfin_library():
     """
@@ -46,7 +48,7 @@ async def get_jellyfin_library():
         try:
             validate_url(api_url, allow_private=True)
         except ValueError as exc:
-            return jsonify({'message': str(exc), 'type': 'error'}), 400
+            return jsonify({'message': 'An internal error occurred', 'type': 'error'}), 400
 
         logger.debug(f"Connecting to Jellyfin server at: {api_url}")
         async with JellyfinClient(api_url=api_url, token=api_key) as jellyfin_client:
@@ -60,10 +62,11 @@ async def get_jellyfin_library():
                 logger.warning("No libraries found on Jellyfin server")
                 return jsonify({'message': 'No library found', 'type': 'error'}), 404
     except Exception as e:
-        logger.error(f'Error fetching Jellyfin libraries: {str(e)}', exc_info=True)
+        logger.error('Error fetching Jellyfin libraries:', exc_info=True)
         return jsonify({'message': 'Error fetching Jellyfin libraries', 'type': 'error'}), 500
 
 
+@require_role('admin')
 @jellyfin_bp.route('/test', methods=['GET'])
 async def test_jellyfin_connection():
     """
@@ -83,7 +86,7 @@ async def test_jellyfin_connection():
         try:
             validate_url(api_url, allow_private=True)
         except ValueError as exc:
-            return jsonify({'message': str(exc), 'status': 'error'}), 400
+            return jsonify({'message': 'An internal error occurred', 'status': 'error'}), 400
 
         logger.debug(f"Testing connection to Jellyfin server at: {api_url}")
 
@@ -117,13 +120,14 @@ async def test_jellyfin_connection():
             }), 400
 
     except Exception as e:
-        logger.error(f'Error testing Jellyfin connection: {str(e)}', exc_info=True)
+        logger.error('Error testing Jellyfin connection:', exc_info=True)
         return jsonify({
             'message': 'Error testing Jellyfin connection',
             'status': 'error'
         }), 500
 
 
+@require_role('admin')
 @jellyfin_bp.route('/users', methods=['GET', 'POST'])
 async def get_jellyfin_users():
     """
@@ -148,7 +152,7 @@ async def get_jellyfin_users():
         try:
             validate_url(api_url, allow_private=True)
         except ValueError as exc:
-            logger.error(f'Invalid Jellyfin API URL: {str(exc)}', exc_info=True)
+            logger.error('Invalid Jellyfin API URL:', exc_info=True)
             return jsonify({'message': 'Invalid Jellyfin API URL', 'type': 'error'}), 400
 
         async with JellyfinClient(api_url=api_url, token=api_key) as jellyfin_client:
@@ -157,5 +161,5 @@ async def get_jellyfin_users():
                 return jsonify({'message': 'Users fetched successfully', 'users': users}), 200
             return jsonify({'message': 'No users found', 'type': 'error'}), 404
     except Exception as e:
-        logger.error(f'Error fetching Jellyfin users: {str(e)}', exc_info=True)
+        logger.error('Error fetching Jellyfin users:', exc_info=True)
         return jsonify({'message': 'Error fetching Jellyfin users', 'type': 'error'}), 500

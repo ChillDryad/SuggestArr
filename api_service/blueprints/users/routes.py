@@ -237,7 +237,7 @@ def update_user(user_id: int):
     try:
         updates.update(_extract_permission_updates(data))
     except ValueError as exc:
-        return jsonify({"error": str(exc)}), 400
+        return jsonify({"error": "An internal error occurred"}), 400
 
     if not updates:
         return jsonify({"error": "No valid fields to update"}), 400

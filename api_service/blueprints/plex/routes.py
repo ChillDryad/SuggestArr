@@ -5,11 +5,13 @@ from api_service.services.plex.plex_client import PlexClient
 from api_service.config.logger_manager import LoggerManager
 from api_service.utils.error_handling import handle_api_errors, validate_request_data, success_response
 from api_service.utils.ssrf_guard import validate_url
+from api_service.auth.middleware import require_role
 from api_service.services.config_service import ConfigService
 
 logger = LoggerManager.get_logger("PlexRoute")
 plex_bp = Blueprint('plex', __name__)
 
+@require_role('admin')
 @plex_bp.route('/libraries', methods=['POST'])
 async def get_plex_libraries():
     """
@@ -42,11 +44,12 @@ async def get_plex_libraries():
         logger.info(f"Successfully fetched {len(libraries)} libraries from Plex server")
         return jsonify({'message': 'Libraries fetched successfully', 'items': libraries}), 200
     except Exception as e:
-        logger.error(f'Error fetching Plex libraries: {str(e)}', exc_info=True)
+        logger.error('Error fetching Plex libraries:', exc_info=True)
         return jsonify({'message': 'Error fetching Plex libraries', 'type': 'error'}), 500
     
     
 
+@require_role('admin')
 @plex_bp.route('/auth', methods=['POST'])
 def plex_login():
     client_id = ConfigService.get_runtime_config().get('PLEX_CLIENT_ID')
@@ -54,6 +57,7 @@ def plex_login():
     pin_id, auth_url = plex_auth.get_authentication_pin()
     return jsonify({'pin_id': pin_id, 'auth_url': auth_url})
 
+@require_role('admin')
 @plex_bp.route('/callback', methods=['POST'])
 def check_plex_authentication():
     pin_id = request.json.get('pin_id')
@@ -67,6 +71,7 @@ def check_plex_authentication():
     else:
         return jsonify({'error': 'Authentication failed'}), 401
     
+@require_role('admin')
 @plex_bp.route('/api/v1/auth/plex', methods=['POST'])
 def login_with_plex():
     auth_token = request.json.get('authToken')
@@ -76,6 +81,7 @@ def login_with_plex():
     else:
         return jsonify({'error': 'Invalid token'}), 401
     
+@require_role('admin')
 @plex_bp.route('/check-auth/<int:pin_id>', methods=['GET'])
 def check_plex_auth(pin_id):
     """Check if Plex login has been completed and get the token."""
@@ -88,6 +94,7 @@ def check_plex_auth(pin_id):
     else:
         return jsonify({'auth_token': None}), 200
     
+@require_role('admin')
 @plex_bp.route('/servers', methods=['POST'])
 async def get_plex_servers_async_route():
     """
@@ -109,9 +116,10 @@ async def get_plex_servers_async_route():
                 return jsonify({'message': 'Failed to fetch Plex servers', 'type': 'error'}), 404
 
     except Exception as e:
-        logger.error(f"Error fetching Plex servers: {str(e)}", exc_info=True)
+        logger.error("Error fetching Plex servers:", exc_info=True)
         return jsonify({'message': 'Error fetching Plex servers', 'type': 'error'}), 500
     
+@require_role('admin')
 @plex_bp.route('/test', methods=['POST'])
 async def test_plex_connection():
     """
@@ -133,7 +141,7 @@ async def test_plex_connection():
         try:
             validate_url(api_url, allow_private=True)
         except ValueError as exc:
-            return jsonify({'message': str(exc), 'status': 'error'}), 400
+            return jsonify({'message': 'An internal error occurred', 'status': 'error'}), 400
 
         logger.debug(f"Testing connection to Plex server at: {api_url}")
         
@@ -171,12 +179,13 @@ async def test_plex_connection():
             }), 400
 
     except Exception as e:
-        logger.error(f'Error testing Plex connection: {str(e)}', exc_info=True)
+        logger.error('Error testing Plex connection:', exc_info=True)
         return jsonify({
             'message': 'Error testing Plex connection',
             'status': 'error'
         }), 500
 
+@require_role('admin')
 @plex_bp.route('/users', methods=['POST'])
 async def get_plex_users():
     """
@@ -194,7 +203,7 @@ async def get_plex_users():
             try:
                 validate_url(api_url, allow_private=True)
             except ValueError as exc:
-                return jsonify({'message': str(exc), 'type': 'error'}), 400
+                return jsonify({'message': 'An internal error occurred', 'type': 'error'}), 400
 
         client_id = ConfigService.get_runtime_config().get('PLEX_CLIENT_ID')
         async with PlexClient(token=api_token, client_id=client_id, api_url=api_url) as plex_client:
@@ -205,5 +214,5 @@ async def get_plex_users():
 
             return jsonify({'message': 'Users fetched successfully', 'users': users}), 200
     except Exception as e:
-        logger.error(f'Error fetching Plex users: {str(e)}', exc_info=True)
+        logger.error('Error fetching Plex users:', exc_info=True)
         return jsonify({'message': 'Error fetching Plex users', 'type': 'error'}), 500

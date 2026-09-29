@@ -4,6 +4,7 @@ from api_service.services.seer.seer_client import SeerClient
 from api_service.config.logger_manager import LoggerManager
 from api_service.db.database_manager import DatabaseManager
 from api_service.utils.ssrf_guard import validate_url
+from api_service.auth.middleware import require_role
 
 logger = LoggerManager().get_logger("SeerRoute")
 seer_bp = Blueprint('seer', __name__)
@@ -26,6 +27,7 @@ def _load_seer_config():
     )
 
 
+@require_role('admin')
 @seer_bp.route('/get_users', methods=['GET', 'POST'])
 async def get_users():
     """
@@ -50,7 +52,7 @@ async def get_users():
         try:
             validate_url(api_url, allow_private=True)
         except ValueError as exc:
-            return jsonify({'message': str(exc), 'type': 'error'}), 400
+            return jsonify({'message': 'An internal error occurred', 'type': 'error'}), 400
 
         async with SeerClient(api_url=api_url, api_key=api_key, session_token=session_token) as seer_client:
             users = await seer_client.get_all_users()
@@ -60,7 +62,7 @@ async def get_users():
 
             return jsonify({'message': 'Users fetched successfully', 'users': users}), 200
     except Exception as e:
-        logger.error(f'Error fetching Seer service users: {str(e)}', exc_info=True)
+        logger.error('Error fetching Seer service users:', exc_info=True)
         return jsonify({'message': 'Error fetching users', 'type': 'error'}), 500
 
 
@@ -106,6 +108,7 @@ async def _simple_seer_http_test(api_url, api_key):
         return False, "Unexpected error occurred", {}
 
 
+@require_role('admin')
 @seer_bp.route('/test', methods=['GET', 'POST'])
 async def test_seer_connection():
     """
@@ -129,7 +132,7 @@ async def test_seer_connection():
         try:
             validate_url(api_url, allow_private=True)
         except ValueError as exc:
-            return jsonify({'message': str(exc), 'status': 'error'}), 400
+            return jsonify({'message': 'An internal error occurred', 'status': 'error'}), 400
 
         http_success, http_message, http_data = await _simple_seer_http_test(api_url, api_key)
 
@@ -179,13 +182,14 @@ async def test_seer_connection():
             }), 400
 
     except Exception as e:
-        logger.error(f'Error testing Seer service connection: {str(e)}', exc_info=True)
+        logger.error('Error testing Seer service connection:', exc_info=True)
         return jsonify({
             'message': 'Error testing Seer connection',
             'status': 'error'
         }), 500
 
 
+@require_role('admin')
 @seer_bp.route('/login', methods=['POST'])
 async def login_seer():
     """
@@ -205,7 +209,7 @@ async def login_seer():
         try:
             validate_url(api_url, allow_private=True)
         except ValueError as exc:
-            return jsonify({'message': str(exc), 'type': 'error'}), 400
+            return jsonify({'message': 'An internal error occurred', 'type': 'error'}), 400
 
         async with SeerClient(
             api_url=api_url, api_key=api_key, seer_user_name=username, seer_password=password
@@ -223,10 +227,11 @@ async def login_seer():
                 return jsonify({'message': 'Login failed', 'type': 'error'}), 401
 
     except Exception as e:
-        logger.error(f'An error occurred during login: {str(e)}')
+        logger.error('An error occurred during login:')
         return jsonify({'message': 'An internal error has occurred', 'type': 'error'}), 500
 
 
+@require_role('admin')
 @seer_bp.route('/radarr-servers', methods=['GET', 'POST'])
 async def get_radarr_servers():
     """
@@ -248,16 +253,17 @@ async def get_radarr_servers():
         try:
             validate_url(api_url, allow_private=True)
         except ValueError as exc:
-            return jsonify({'message': str(exc), 'type': 'error'}), 400
+            return jsonify({'message': 'An internal error occurred', 'type': 'error'}), 400
 
         async with SeerClient(api_url=api_url, api_key=api_key, session_token=session_token) as seer_client:
             servers = await seer_client.get_radarr_servers()
             return jsonify({'servers': servers or []}), 200
     except Exception as e:
-        logger.error(f'Error fetching Radarr servers: {str(e)}', exc_info=True)
+        logger.error('Error fetching Radarr servers:', exc_info=True)
         return jsonify({'message': 'Error fetching Radarr servers', 'type': 'error'}), 500
 
 
+@require_role('admin')
 @seer_bp.route('/sonarr-servers', methods=['GET', 'POST'])
 async def get_sonarr_servers():
     """
@@ -286,5 +292,5 @@ async def get_sonarr_servers():
             servers = await seer_client.get_sonarr_servers()
             return jsonify({'servers': servers or []}), 200
     except Exception as e:
-        logger.error(f'Error fetching Sonarr servers: {str(e)}', exc_info=True)
+        logger.error('Error fetching Sonarr servers:', exc_info=True)
         return jsonify({'message': 'Error fetching Sonarr servers', 'type': 'error'}), 500

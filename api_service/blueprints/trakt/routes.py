@@ -247,7 +247,7 @@ def request_my_device_code():
         return jsonify(activation), 200
     except RuntimeError as exc:
         logger.warning("Trakt device-code request failed for user id=%s: %s", _current_user_id(), exc)
-        return jsonify({"message": str(exc), "status": "error"}), 400
+        return jsonify({"message": "An internal error occurred", "status": "error"}), 400
     except Exception as exc:
         logger.error("Unexpected Trakt device-code error for user id=%s: %s", _current_user_id(), exc, exc_info=True)
         return jsonify({"message": "Error requesting Trakt device code", "status": "error"}), 500
@@ -311,10 +311,10 @@ def poll_my_device_token():
         return jsonify({"connected": False, "status": "pending"}), 202
     except (TraktDeviceExpired, TraktDeviceDenied) as exc:
         _mark_error_unless_connected(db, provider, external_user_id, str(exc))
-        return jsonify({"message": str(exc), "status": "error"}), 400
+        return jsonify({"message": "An internal error occurred", "status": "error"}), 400
     except RuntimeError as exc:
         _mark_error_unless_connected(db, provider, external_user_id, "Trakt connection failed")
-        return jsonify({"message": str(exc), "status": "error"}), 400
+        return jsonify({"message": "An internal error occurred", "status": "error"}), 400
     except Exception as exc:
         logger.error("Unexpected Trakt device-token error for user id=%s: %s", _current_user_id(), exc, exc_info=True)
         _mark_error_unless_connected(db, provider, external_user_id, "Trakt connection failed")
@@ -341,7 +341,7 @@ def request_media_user_device_code(provider: str, external_user_id: str):
         return jsonify(activation), 200
     except RuntimeError as exc:
         logger.warning("Trakt device-code request failed for %s/%s: %s", provider, external_user_id, exc)
-        return jsonify({"message": str(exc), "status": "error"}), 400
+        return jsonify({"message": "An internal error occurred", "status": "error"}), 400
     except Exception as exc:
         logger.error("Unexpected Trakt device-code error for %s/%s: %s", provider, external_user_id, exc, exc_info=True)
         return jsonify({"message": "Error requesting Trakt device code", "status": "error"}), 500
@@ -416,7 +416,7 @@ def poll_media_user_device_token(provider: str, external_user_id: str):
     except (TraktDeviceExpired, TraktDeviceDenied) as exc:
         _mark_error_unless_connected(db, provider, external_user_id, str(exc))
         logger.info("Trakt device-token poll failed for %s/%s: %s", provider, external_user_id, exc)
-        return jsonify({"message": str(exc), "status": "error"}), 400
+        return jsonify({"message": "An internal error occurred", "status": "error"}), 400
     except RuntimeError as exc:
         logger.info("Trakt device-token poll failed for %s/%s: %s", provider, external_user_id, exc)
         _mark_error_unless_connected(db, provider, external_user_id, "Trakt connection failed")
@@ -495,7 +495,7 @@ def preview_media_user_recent_items(provider: str, external_user_id: str):
         return jsonify({"message": "Media user not found", "status": "error"}), 404
     except RuntimeError as exc:
         logger.warning("Trakt recent preview failed for %s/%s: %s", provider, external_user_id, exc)
-        return jsonify({"message": str(exc), "status": "error"}), 400
+        return jsonify({"message": "An internal error occurred", "status": "error"}), 400
     except Exception as exc:
         logger.error("Unexpected Trakt recent preview error for %s/%s: %s", provider, external_user_id, exc, exc_info=True)
         return jsonify({"message": "Error fetching Trakt recent items", "status": "error"}), 500
@@ -539,7 +539,7 @@ def preview_my_recent_items():
         return jsonify({"message": "Media user not found", "status": "error"}), 404
     except RuntimeError as exc:
         logger.warning("Trakt recent preview failed for user id=%s: %s", _current_user_id(), exc)
-        return jsonify({"message": str(exc), "status": "error"}), 400
+        return jsonify({"message": "An internal error occurred", "status": "error"}), 400
     except Exception as exc:
         logger.error("Unexpected Trakt recent preview error for user id=%s: %s", _current_user_id(), exc, exc_info=True)
         return jsonify({"message": "Error fetching Trakt recent items", "status": "error"}), 500

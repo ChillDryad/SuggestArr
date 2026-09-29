@@ -293,7 +293,7 @@ def create_job():
             data['request_profiles'] = validate_request_profiles(data.get('request_profiles'))
             validate_request_profiles_with_seer(data['request_profiles'])
         except ValueError as exc:
-            return jsonify({'status': 'error', 'message': str(exc)}), 400
+            return jsonify({'status': 'error', 'message': 'An internal error occurred'}), 400
         identity_mode = data.get('seer_identity_mode', 'technical_user')
         if identity_mode not in ('matching_user', 'technical_user', 'admin_user'):
             return jsonify({'status': 'error', 'message': 'Invalid seer_identity_mode'}), 400
@@ -308,7 +308,7 @@ def create_job():
         try:
             _validate_request_limits(data)
         except ValueError as exc:
-            return jsonify({'status': 'error', 'message': str(exc)}), 400
+            return jsonify({'status': 'error', 'message': 'An internal error occurred'}), 400
         
         # Set owner_id from current user - never allow client to override
         current_user = getattr(g, 'current_user', None)
@@ -398,7 +398,7 @@ def update_job(job_id: int):
                 data['request_profiles'] = validate_request_profiles(data['request_profiles'])
                 validate_request_profiles_with_seer(data['request_profiles'])
             except ValueError as exc:
-                return jsonify({'status': 'error', 'message': str(exc)}), 400
+                return jsonify({'status': 'error', 'message': 'An internal error occurred'}), 400
         if 'delivery_mode' in data and data['delivery_mode'] not in ('inherit', 'automatic', 'manual'):
             return jsonify({'status': 'error', 'message': 'delivery_mode must be inherit, automatic or manual'}), 400
         if 'approval_pause_mode' in data and data['approval_pause_mode'] not in ('inherit', 'always', 'never'):
@@ -418,7 +418,7 @@ def update_job(job_id: int):
         try:
             _validate_request_limits(data)
         except ValueError as exc:
-            return jsonify({'status': 'error', 'message': str(exc)}), 400
+            return jsonify({'status': 'error', 'message': 'An internal error occurred'}), 400
         if 'job_type' in data and job_type not in ['discover', 'recommendation', 'trakt_recommendations']:
             return jsonify({
                 'status': 'error',

@@ -41,7 +41,7 @@ def validate_url(url: str, allow_private: bool = False) -> None:
     if not hostname:
         raise ValueError("URL has no hostname")
 
-    if hostname.lower() in _BLOCKED_HOSTNAMES and not allow_private:
+    if hostname.lower() in _BLOCKED_HOSTNAMES:
         raise ValueError("Connections to internal hosts are not allowed")
 
     try:
@@ -49,6 +49,10 @@ def validate_url(url: str, allow_private: bool = False) -> None:
     except socket.gaierror:
         raise ValueError(f"Could not resolve hostname: {hostname}")
 
+    # Always block link-local (169.254.0.0/16 — cloud metadata), loopback,
+    # unspecified, and multicast addresses regardless of allow_private.
+    # allow_private only relaxes the RFC1918 private-range check so that
+    # internal media services (e.g. http://jellyfin.local:8096) can be reached.
     for addr_info in addr_infos:
         ip_str = addr_info[4][0]
         try:
@@ -56,15 +60,20 @@ def validate_url(url: str, allow_private: bool = False) -> None:
         except ValueError:
             continue
 
-        if not allow_private:
-            if (
-                ip.is_loopback
-                or ip.is_private
-                or ip.is_link_local
-                or ip.is_multicast
-                or ip.is_reserved
-                or ip.is_unspecified
-            ):
-                raise ValueError(
-                    "Connections to internal/private addresses are not allowed"
-                )
+        if (
+            ip.is_loopback
+            or ip.is_link_local
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            raise ValueError(
+                "Connections to loopback, link-local, multicast, or unspecified addresses are not allowed"
+            )
+
+        if not allow_private and (
+            ip.is_private
+            or ip.is_reserved
+        ):
+            raise ValueError(
+                "Connections to internal/private addresses are not allowed"
+            )
